@@ -1,6 +1,7 @@
 from . import main
 from flask import request
-from ..api.webhook import Webhook
+from api.webhook import Webhook
+
 
 @main.route("/")
 def index():

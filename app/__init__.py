@@ -1,9 +1,11 @@
 from flask import Flask, request
-from pymongo import MongoClient
+# from flask_pymongo import PyMongo
 from config import config
 from main import main as main_blueprint
+import os
+from utils import make_celery
 
-mongo = MongoClient()
+# mongo = PyMongo()
 
 
 def create_app(config_name):
@@ -11,7 +13,12 @@ def create_app(config_name):
     app.config.from_object(config[config_name])
     config[config_name].init_app(app)
 
-    mongo.init_app(app)
+    # mongo.init_app(app)
+
+    celery = make_celery(app)
+    celery.set_default()
+
     app.register_blueprint(main_blueprint)
 
-    return app
+    return app, celery
+

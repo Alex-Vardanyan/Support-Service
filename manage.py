@@ -1,9 +1,8 @@
 import os
-from app import create_app, mongo
-from flask.ext.script import Manager
+from app import create_app  # , mongo
 
-app = create_app((os.getenv('FLASK_CONFIG') or 'default'))
-manager = Manager(app)
+app, celery = create_app((os.getenv('FLASK_CONFIG') or 'default'))
+app.app_context().push()
 
 if __name__ == "__main__":
-    manager.run()
+    app.run()
