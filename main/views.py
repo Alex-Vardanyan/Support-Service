@@ -10,4 +10,5 @@ def index():
 
 @main.route("/zendesk-webhook", methods=["POST"])
 def handle_zendesk_webhook():
+    print(request)
     return Webhook(request).handle_zendesk_webhook()

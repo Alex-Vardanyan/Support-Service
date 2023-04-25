@@ -9,7 +9,8 @@ services:
       FLASK_DEBUG: 1
     volumes:
       - .:/app
-    command: flask run -h 0.0.0.0
+    command: python3 manage.py
+#    python manage.py runserver --host 0.0.0.0
     ports:
       - 5000:5000
   celery:
@@ -19,6 +20,6 @@ services:
       FLASK_APP: run
     volumes:
       - .:/app
-    command: celery -A run.celery worker --loglevel=info
+    command: celery -A manage.celery worker --loglevel=info
     depends_on:
       - redis

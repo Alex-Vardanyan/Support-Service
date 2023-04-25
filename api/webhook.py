@@ -1,41 +1,46 @@
 from api.controller import Controller
 # from celery import Celery
-# from flask import Response, g
+# from flask import Response, g, current_app
 from celery import shared_task
+import celery
+# from celery._state import current_app
 from config import config
 import requests
 import json
 import openai
 
+# todo: for testing purposes .\-/.
+url = config.get("ZENDESK_URL") or "https://alexvtest.zendesk.com"
+username = config.get("ZENDESK_USERNAME") or "alexandervardanyan1@gmail.com"
+password = config.get("ZENDESK_PASSWORD") or "Alevard2001"
+
 
 class Webhook(Controller):
-
-    url = config.get("ZENDESK_URL")
-    username = config.get("ZENDESK_USERNAME")
-    password = config.get("ZENDESK_PASSWORD")
 
     def __init__(self, request):
         super().__init__(request)
 
     def handle_zendesk_webhook(self):
         contents = self.request_json
-        try:
-            if contents["type"] == "ticket_created":
-                assigned = self.__assign(contents['ticket_id']).delay().get()
-                if assigned:
-                    self.__answer_or_take_action.delay(contents['ticket_id']).get()
-            if contents["type"] == "ticket_updated":
-                if contents['assignee_id'] != config.get("ASSIGNEE_ID") or contents["ticket_status"] == "Solved":
-                    pass
-                else:
-                    self.__answer_or_take_action.delay(contents['ticket_id']).get()
-        except Exception as e:
-            print(str(e))
-            return "Something went wrong", 500
-        return "OK", 200
+        if not contents['ticket_id']:
+            try:
+                if contents["type"] == "ticket_created":
+                    print(contents['ticket_id'])  # todo refactor code
+                    assigned = celery.current_app.assign.delay(contents['ticket_id'], assignee=None).get()
+                    if assigned:
+                        celery.current_app.answer_or_take_action.delay(contents['ticket_id']).get()
+                if contents["type"] == "ticket_updated":
+                    if contents['assignee_id'] != config.get("ASSIGNEE_ID") or contents["ticket_status"] == "Solved":
+                        pass
+                    else:
+                        celery.current_app.answer_or_take_action.delay(contents['ticket_id']).get()
+                return "OK", 200
+            except Exception as e:
+                print(str(e))
+                return "something went wrong", 500
 
     @shared_task(bind=True)
-    def __get_ticket_data(self, ticket_id):
+    def get_ticket_data(self, ticket_id):
         uri = f"/api/v2/tickets/{ticket_id}/comments"
         headers = {
             "Content-Type": "application/json",
@@ -43,8 +48,8 @@ class Webhook(Controller):
 
         response = requests.request(
             "GET",
-            self.url + uri,
-            auth=(self.username, self.password),
+            url + uri,
+            auth=(username, password),
             headers=headers
         )
 
@@ -52,13 +57,14 @@ class Webhook(Controller):
                        conversation in json.loads(response.text)], key=lambda x: x[-1])
 
     @shared_task(bind=True)
-    def __answer_or_take_action(self, ticket_id):
-        conversation = self.__get_ticket_data(ticket_id)
+    def answer_or_take_action(self, ticket_id):
+        conversation = celery.current_app.send_task('get_ticket_data', args=[ticket_id])
         latest_message = conversation[-1][-1]
         if latest_message == "/call_support_agent":  # todo add functionality with Zendesk's conversation api
-            pass  # todo find out who's least busy support agents, mongoDB
+            pass  # todo find out who's least busy support agents + mongoDB preferences
             try:
-                ready = self.__assign.delay(ticket_id=ticket_id, assignee=None).get()  # todo change to agent's id
+                ready = celery.current_app.assign.delay(ticket_id=ticket_id, assignee=None).get()
+                # todo change to agent's id
             except Exception as e:
                 print(str(e))
                 return False
@@ -84,13 +90,13 @@ class Webhook(Controller):
 
             uri = f"/api/v2/tickets/{ticket_id}.json"
             headers = {'Content-Type': 'application/json'}
-            auth = (self.username, self.password)
+            auth = (username, password)
             payload = {"ticket": {'comment': {
                 'body': answer if answer is not None else "this is test response",
                 "author_id": config.get("ASSIGNEE_ID"),
                 'public': True}
             }}
-            response = requests.put(self.url + uri, json=payload, auth=auth, headers=headers)
+            response = requests.put(url + uri, json=payload, auth=auth, headers=headers)
             if response.status_code == 200:
                 return True
             else:
@@ -98,15 +104,16 @@ class Webhook(Controller):
                 return False
 
     @shared_task(bind=True)
-    def __assign(self, ticket_id, assignee: int | None):
+    def assign(self, ticket_id, assignee=None):
         uri = f"/api/v2/tickets/{ticket_id}"
+        print(url, uri)
         headers = {'Content-Type': 'application/json'}
-        auth = (self.username, self.password)
+        auth = (username, password)
         assignee_id = config.get("ASSIGNEE_ID")
 
         payload = {"ticket": {
             "assignee_id": assignee if assignee is not None else assignee_id}}
-        response = requests.put(self.url + uri, json=payload, auth=auth, headers=headers)
+        response = requests.put(url + uri, json=payload, auth=auth, headers=headers)
 
         if response.status_code == 200:
             return True
