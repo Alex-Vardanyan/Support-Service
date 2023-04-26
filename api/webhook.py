@@ -1,4 +1,3 @@
-import api.webhook
 from api.controller import Controller
 # from celery import Celery
 # from flask import Response, g, current_app
@@ -39,7 +38,11 @@ def assign(ticket_id, assignee=None):
 def answer_or_take_action(conversation, ticket_id):
     print(conversation)
     latest_message = conversation[-1][-1]
-    if len(conversation) == 0 or latest_message == "/call_support_agent":  # todo add functionality with Zendesk's conversation api
+    latest_responder = conversation[-1][0]
+    if latest_responder == config.get("ASSIGNEE_ID"):
+        return None  # so it doesn't reply on its own reply
+    if len(conversation) == 0 or latest_message == "/call_support_agent":
+        # todo add functionality with Zendesk's conversation api
         # pass  # todo find out who's least busy support agents + mongoDB preferences
         assignee = 14750824466065
         assign.s(ticket_id=ticket_id, assignee=assignee).apply_async()
