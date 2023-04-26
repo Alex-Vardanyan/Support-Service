@@ -29,7 +29,6 @@ def assign(ticket_id, assignee=None):
     response = requests.put(url + uri, json=payload, auth=auth, headers=headers)
 
     if response.status_code == 200:
-        # celery.current_app.send_task('api.webhook.answer_or_take_action', args=[ticket_id])
         return True
     else:
         print(f'Error updating ticket {ticket_id}: {response.status_code}', response.text)
@@ -40,56 +39,41 @@ def assign(ticket_id, assignee=None):
 def answer_or_take_action(conversation, ticket_id):
     print(conversation)
     latest_message = conversation[-1][-1]
-    # if latest_message == "/call_support_agent":  # todo add functionality with Zendesk's conversation api
-    #     pass  # todo find out who's least busy support agents + mongoDB preferences
-    #     assignee = 14750824466065
-    #
-    #     uri = f"/api/v2/tickets/{ticket_id}"
-    #
-    #     headers = {'Content-Type': 'application/json'}
-    #     auth = (username, password)
-    #     assignee_id = config.get("ASSIGNEE_ID")
-    #
-    #     payload = {"ticket": {
-    #         "assignee_id": assignee if assignee is not None else assignee_id}}
-    #     response = requests.put(url + uri, json=payload, auth=auth, headers=headers)
-    #
-    #     if response.status_code == 200:
-    #         celery.current_app.send_task('api.webhook.assign', args=[ticket_id, assignee])
-    #         return True
-    #     else:
-    #         print(f'Error updating ticket {ticket_id}: {response.status_code}', response.text)
-    #         return False
-    # else:
-    token = config.get("OPENAI_SECRET_KEY")  # todo change to autogpt trained on 10web's help center
-    openai.api_key = token
+    if len(conversation) == 0 or latest_message == "/call_support_agent":  # todo add functionality with Zendesk's conversation api
+        # pass  # todo find out who's least busy support agents + mongoDB preferences
+        assignee = 14750824466065
+        assign.s(ticket_id=ticket_id, assignee=assignee).apply_async()
+        return True
+    else:
+        token = config.get("OPENAI_SECRET_KEY")  # todo change to autogpt trained on 10web's help center
+        openai.api_key = token
 
-    messages = []
-    for index in range(len(conversation)):
-        messages.append({
-            "role": "assistant" if conversation[index][1] == config.get("ASSIGNEE_ID") else "user",
-            "content": conversation[index][1]})
-    print(messages, "testing the messages")
-    completion = openai.ChatCompletion.create(
-        model="gpt-3.5-turbo",
-        messages=messages
-    )
+        messages = []
+        for index in range(len(conversation)):
+            messages.append({
+                "role": "assistant" if conversation[index][1] == config.get("ASSIGNEE_ID") else "user",
+                "content": conversation[index][1]})
+        print(messages, "testing the messages")
+        completion = openai.ChatCompletion.create(
+            model="gpt-3.5-turbo",
+            messages=messages
+        )
 
-    answer = completion.choices[0].message["content"]
-    print("testing testing testing",answer)
-    uri = f"/api/v2/tickets/{ticket_id}.json"
-    headers = {'Content-Type': 'application/json'}
-    auth = (username, password)
-    payload = {"ticket": {'comment': {
-        'body': answer if answer is not None else "this is test response",
-        "author_id": config.get("ASSIGNEE_ID"),
-        'public': True}
-    }}
-    response = requests.put(url + uri, json=payload, auth=auth, headers=headers)
-    if response.status_code != 200:
-        print(f'Error creating comment: {response.status_code} {response.text}')
-        return False
-    return True
+        answer = completion.choices[0].message["content"]
+        print("testing testing testing", answer)
+        uri = f"/api/v2/tickets/{ticket_id}.json"
+        headers = {'Content-Type': 'application/json'}
+        auth = (username, password)
+        payload = {"ticket": {'comment': {
+            'body': answer if answer is not None else "this is test response",
+            "author_id": config.get("ASSIGNEE_ID"),
+            'public': True}
+        }}
+        response = requests.put(url + uri, json=payload, auth=auth, headers=headers)
+        if response.status_code != 200:
+            print(f'Error creating comment: {response.status_code} {response.text}')
+            return False
+        return True
 
 
 @shared_task()
@@ -126,7 +110,7 @@ class Webhook(Controller):
         try:
             if contents["type"] == "ticket_created":
                 print("ticket_created")
-                task1 = assign.s(ticket_id=contents['ticket_id']).apply_async()
+                assign.s(ticket_id=contents['ticket_id']).apply_async()
                 print("done1")
                 chain(get_ticket_data.s(ticket_id=contents['ticket_id']) | answer_or_take_action.s(
                     ticket_id=contents['ticket_id'])) \
