@@ -3,9 +3,9 @@ from flask import request
 from api.webhook import Webhook
 
 
-@main.route("/")
+@main.route("/", methods=["GET"])
 def index():
-    return "<h1>Hi<h1/>", 200
+    return "<h1>Hi</h1>"
 
 
 @main.route("/zendesk-webhook", methods=["POST"])
