@@ -12,3 +12,13 @@ def index():
 def handle_zendesk_webhook():
     print(request)
     return Webhook(request).handle_zendesk_webhook()
+
+
+@main.route("/app/agent-assign/<token>", methods=["GET"])
+def agent_assign(token):
+    return Webhook(request).agent_assign()
+
+
+@main.route("/app/mark-solved/<token>", methods=["GET"])
+def mark_solved(token):
+    return Webhook(request).mark_solved()

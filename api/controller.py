@@ -4,4 +4,8 @@ class Controller:
 
     def __init__(self, request):
         self.request = request
-        self.request_json = (request.get_json())
+        try:
+            self.request_json = (request.get_json())
+        except Exception as e:
+            print(str(e))
+            self.request_json = None

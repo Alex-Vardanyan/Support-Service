@@ -1,10 +1,8 @@
+from flask import url_for
+
 from api.controller import Controller
-# from celery import Celery
-# from flask import Response, g, current_app
-from celery.result import AsyncResult
 from celery import shared_task, chain, signature, current_app
-import celery
-# from celery._state import current_app
+from itsdangerous import URLSafeSerializer, BadData
 from config import config
 import requests
 import json
@@ -35,8 +33,8 @@ def assign(ticket_id, assignee=None):
 
 
 @shared_task()
-def answer_or_take_action(conversation, ticket_id):
-    print(conversation)
+def answer_or_take_action(conversation, ticket_id, via="email"):
+    print(conversation, ticket_id, via)
     latest_message = conversation[-1][-1]
     latest_responder = conversation[-1][0]
     if latest_responder == config.get("ASSIGNEE_ID"):
@@ -63,12 +61,34 @@ def answer_or_take_action(conversation, ticket_id):
         )
 
         answer = completion.choices[0].message["content"]
+
+        footer = ""
+        if via == "email":
+            answer = answer.replace('\n', '<br>')
+            answer = "<p>" + answer + "</p>"
+
+            footer = "<p>" + (f"""
+
+Best regards,
+
+Atlas, 10Web's AI Support Companion
+
+You can always connect with Agent
+
+<a href={generate_token(ticket_id, "reassign", "main.agent_assign")} style="background-color: #333; color: white; padding: 10px 20px; border-radius: 20px; text-decoration: none;"><b>Connect me with Support Agent</b></a> 
+
+If your ticket is solved mark it as Solved 
+
+<a href={generate_token(ticket_id, "mark_solved", "main.mark_solved")} style="background-color: #333; color: white; padding: 10px 20px; border-radius: 20px; text-decoration: none;"><b>Mark as Solved</b></a>""").replace('\n', '<br>') + "</p>"
+
+        answer = answer + footer
         print("testing testing testing", answer)
+
         uri = f"/api/v2/tickets/{ticket_id}.json"
         headers = {'Content-Type': 'application/json'}
         auth = (username, password)
         payload = {"ticket": {'comment': {
-            'body': answer if answer is not None else "this is test response",
+            "html_body" if via == "email" else 'body': answer if answer is not None else "this is test response",
             "author_id": config.get("ASSIGNEE_ID"),
             'public': True}
         }}
@@ -103,6 +123,32 @@ def get_ticket_data(ticket_id):
         return False
 
 
+@shared_task()
+def mark_as(ticket_id, status):
+    uri = f"/api/v2/tickets/{ticket_id}"
+
+    headers = {'Content-Type': 'application/json'}
+    auth = (username, password)
+
+    payload = {"ticket": {
+        "status": status}}
+    response = requests.put(url + uri, json=payload, auth=auth, headers=headers)
+
+    if response.status_code == requests.codes.ok:
+        return True
+    else:
+        print(f'Error setting status for ticket {ticket_id}: {response.status_code}', response.text)
+        return False
+
+
+def generate_token(ticket_id, salt, route):
+    s = URLSafeSerializer(config.get("SECRET_KEY"), salt=salt)
+    token = s.dumps(ticket_id)
+    email_url = url_for(route, token=token, _external=True)
+    print("generated")
+    return email_url
+
+
 class Webhook(Controller):
 
     def __init__(self, request):
@@ -116,18 +162,42 @@ class Webhook(Controller):
                 assign.s(ticket_id=contents['ticket_id']).apply_async()
                 print("done1")
                 chain(get_ticket_data.s(ticket_id=contents['ticket_id']) | answer_or_take_action.s(
-                    ticket_id=contents['ticket_id'])) \
+                    ticket_id=contents['ticket_id'], via=contents["ticket_via"])) \
                     .apply_async()
                 print("done2")
             if contents["type"] == "ticket_updated":
-                if contents['assignee_id'] != config.get("ASSIGNEE_ID") or contents["ticket_status"] == "Solved":
+                if contents['assignee_id'] != config.get("ASSIGNEE_ID") or contents["ticket_status"] in ["solved", "closed"]:
                     pass  # todo IDK yet maybe delete some logs in mongo
                 # todo just forget about this ticket
                 else:
                     chain(get_ticket_data.s(contents['ticket_id']) | answer_or_take_action.s(
-                        ticket_id=contents['ticket_id'])) \
+                        ticket_id=contents['ticket_id'], via=contents["ticket_via"])) \
                         .apply_async()
             return "OK", 200
         except Exception as e:
             print(str(e))
             return "something went wrong, IDK", 500
+
+    def agent_assign(self):
+        token = self.request.view_args.get('token')
+        s = URLSafeSerializer(config.get("SECRET_KEY"), salt='reassign')
+
+        try:
+            ticket_id = s.loads(token)
+        except BadData:
+            return "Invalid Token", 400
+
+        assign.s(ticket_id=ticket_id, assignee=14750824466065).apply_async()  # todo change it
+        return "You'll be contacted with our support agent right away", 200
+
+    def mark_solved(self):
+        token = self.request.view_args.get('token')
+        s = URLSafeSerializer(config.get("SECRET_KEY"), salt='mark_solved')
+
+        try:
+            ticket_id = s.loads(token)
+        except BadData:
+            return "Invalid Token", 400
+
+        mark_as.s(ticket_id=ticket_id, status="solved").apply_async()  # todo closed?
+        return "Thank you, your ticket is now marked as Solved", 200
