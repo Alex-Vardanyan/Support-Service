@@ -35,6 +35,46 @@ def assign(ticket_id, assignee=None):
         return False
 
 
+def get_agents():
+    uri = "/api/v2/users"
+    headers = {'Content-Type': 'application/json'}
+    auth = (username, password)
+    response = requests.get(url + uri, auth=auth, headers=headers)
+    agents = []
+    if response.status_code == 200:
+        users = json.loads(response.text)["users"]
+        for user in users:
+            agents.append(user["id"])
+        return agents
+    else:
+        print(f"Couldn't get agents list: {response.status_code}", response.text)
+        return False
+
+
+def get_least_busy_agent():
+    agents = get_agents()
+    if agents:
+        agent_to_be_assigned = agents[0]
+        min_tickets_assigned = 0
+
+        headers = {'Content-Type': 'application/json'}
+        auth = (username, password)
+
+        for agent in agents:
+            uri = f"/api/v2/users/{agent}/related"
+            response = requests.get(url + uri, auth=auth, headers=headers)
+            if response.status_code == 200:
+                ticket_count = json.loads(response.text)["user_related"]["assigned_tickets"]
+                if agents.index(agent) == 0:
+                    min_tickets_assigned = ticket_count
+                    continue
+                if ticket_count < min_tickets_assigned:
+                    agent_to_be_assigned = agent
+
+        return agent_to_be_assigned
+
+
+
 def conversation_reply(conversation_id, answer):
     uri = f"/v2/apps/{app_id}/conversations/{conversation_id}/messages"
     headers = {'Content-Type': 'application/json'}
@@ -200,7 +240,7 @@ If your ticket is solved mark it as Solved
                 return None
             latest_message = conversation[-1]["payload"]
             if latest_message == "Assign to Agent":
-                assignee = 14750824466065  # todo change it to function
+                assignee = get_least_busy_agent()
                 assign.s(ticket_id=ticket_id, assignee=assignee).apply_async()
                 return True
             elif latest_message == "Mark as Solved":
@@ -314,7 +354,8 @@ class Webhook(Controller):
         except BadData:
             return "Invalid Token", 400
 
-        assign.s(ticket_id=ticket_id, assignee=14750824466065).apply_async()  # todo change it
+        assignee = get_least_busy_agent()
+        assign.s(ticket_id=ticket_id, assignee=assignee).apply_async()  # todo change it
         return "You'll be contacted with our support agent right away", 200
 
     def mark_solved(self):
