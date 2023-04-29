@@ -1,5 +1,4 @@
 from flask import url_for
-
 from api.controller import Controller
 from celery import shared_task, chain, signature, current_app
 from itsdangerous import URLSafeSerializer, BadData
@@ -47,7 +46,19 @@ def conversation_reply(conversation_id, answer):
         },
         "content": {
             "type": "text",
-            "text": answer if answer else "this is test response"
+            "text": answer if answer else "this is test response",
+            "actions": [
+                {
+                    "type": "reply",
+                    "text": "Assign to Agent",
+                    "payload": "/call_support_agent"
+                },
+                {
+                    "type": "reply",
+                    "text": "Mark as Solved",
+                    "payload": "/mark_solved"
+                }
+            ]
         }
     }
     response = requests.post(smooch_url + uri, json=payload, auth=auth, headers=headers)
@@ -101,8 +112,8 @@ def get_conversation(conversation_id):
         return conversation
 
 
-def get_answer(conversation):
-    token = config.get("OPENAI_SECRET_KEY")  # todo change to autogpt trained on 10web's help center
+def get_answer(conversation):  # todo change to autogpt trained on 10web's help center
+    token = config.get("OPENAI_SECRET_KEY")
     openai.api_key = token
 
     completion = openai.ChatCompletion.create(
@@ -140,18 +151,18 @@ def reply(ticket_id, via="email"):
             return False
         latest_message = messages[0]["content"]
         latest_responder = messages[0]["role"]
-        if latest_responder == config.get("ASSIGNEE_ID"):
+        if len(messages) == 0 or latest_responder == config.get("ASSIGNEE_ID"):
             return None  # so it doesn't reply on its own reply
-        if len(messages) == 0 or latest_message == "/call_support_agent":
+        elif latest_message == "Assign to Agent":
             # todo add functionality with Zendesk's conversation api
             # pass  # todo find out who's least busy support agents + mongoDB preferences
             assignee = 14750824466065
             assign.s(ticket_id=ticket_id, assignee=assignee).apply_async()
             return True
+        elif latest_message == "Mark as Solved":
+            mark_as.s(ticket_id=ticket_id, status="solved").apply_async()
+            return True
         else:
-            token = config.get("OPENAI_SECRET_KEY")  # todo change to autogpt trained on 10web's help center
-            openai.api_key = token
-
             answer = get_answer(messages)
 
             answer = answer.replace('\n', '<br>')
@@ -185,7 +196,19 @@ If your ticket is solved mark it as Solved
         conversation_id = get_conversation_id(ticket_id)
         if conversation_id:
             conversation = get_conversation(conversation_id)
+            if conversation[-1]["user"] == "Atlas":
+                return None
+            latest_message = conversation[-1]["payload"]
+            if latest_message == "Assign to Agent":
+                assignee = 14750824466065  # todo change it to function
+                assign.s(ticket_id=ticket_id, assignee=assignee).apply_async()
+                return True
+            elif latest_message == "Mark as Solved":
+                mark_as.s(ticket_id=ticket_id, status="solved").apply_async()
+                return True
+
             answer = get_answer(conversation)
+
             if not conversation_reply(conversation_id, answer):
                 print(f"Error creating comment in conversation: {ticket_id} {conversation_id}")
                 return False
