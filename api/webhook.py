@@ -194,9 +194,7 @@ def reply(ticket_id, via="email"):
         if len(messages) == 0 or latest_responder == config.get("ASSIGNEE_ID"):
             return None  # so it doesn't reply on its own reply
         elif latest_message == "Assign to Agent":
-            # todo add functionality with Zendesk's conversation api
-            # pass  # todo find out who's least busy support agents + mongoDB preferences
-            assignee = 14750824466065
+            assignee = get_least_busy_agent()
             assign.s(ticket_id=ticket_id, assignee=assignee).apply_async()
             return True
         elif latest_message == "Mark as Solved":
@@ -355,7 +353,7 @@ class Webhook(Controller):
             return "Invalid Token", 400
 
         assignee = get_least_busy_agent()
-        assign.s(ticket_id=ticket_id, assignee=assignee).apply_async()  # todo change it
+        assign.s(ticket_id=ticket_id, assignee=assignee).apply_async()
         return "You'll be contacted with our support agent right away", 200
 
     def mark_solved(self):
