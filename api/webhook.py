@@ -1,6 +1,6 @@
 from flask import url_for
 from api.controller import Controller
-from celery import shared_task, chain, signature, current_app
+from celery import shared_task  # , chain, signature, current_app
 from itsdangerous import URLSafeSerializer, BadData
 from config import config
 import requests
@@ -74,7 +74,6 @@ def get_least_busy_agent():
         return agent_to_be_assigned
 
 
-
 def conversation_reply(conversation_id, answer):
     uri = f"/v2/apps/{app_id}/conversations/{conversation_id}/messages"
     headers = {'Content-Type': 'application/json'}
@@ -146,7 +145,7 @@ def get_conversation(conversation_id):
                 if event["content"]["type"] == "text":
                     conversation.append({"role": "assistant" if event["author"]["displayName"] == "Atlas" else "user",
                                          "content": event["content"]["text"]})
-            except Exception as e:
+            except Exception:
                 pass
         print(conversation)
         return conversation
