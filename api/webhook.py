@@ -148,7 +148,7 @@ def get_conversation(conversation_id):
             except Exception:
                 pass
         print(conversation)
-        return conversation
+        return conversation, data[-1].get("content", {}).get("payload", None)
 
 
 def get_answer(conversation):  # todo change to autogpt trained on 10web's help center
@@ -232,15 +232,15 @@ If your ticket is solved mark it as Solved
     else:
         conversation_id = get_conversation_id(ticket_id)
         if conversation_id:
-            conversation = get_conversation(conversation_id)
+            conversation, last_payload = get_conversation(conversation_id)
             if conversation[-1]["user"] == "Atlas":
                 return None
             latest_message = conversation[-1]["payload"]
-            if latest_message == "Assign to Agent":
+            if latest_message == "Assign to Agent" or last_payload == "/call_support_agent":
                 assignee = get_least_busy_agent()
                 assign.s(ticket_id=ticket_id, assignee=assignee).apply_async()
                 return True
-            elif latest_message == "Mark as Solved":
+            elif latest_message == "Mark as Solved" or last_payload == "/mark_solved":
                 mark_as.s(ticket_id=ticket_id, status="solved").apply_async()
                 return True
 
