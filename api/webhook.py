@@ -233,9 +233,9 @@ If your ticket is solved mark it as Solved
         conversation_id = get_conversation_id(ticket_id)
         if conversation_id:
             conversation, last_payload = get_conversation(conversation_id)
-            if conversation[-1]["user"] == "Atlas":
+            if conversation[-1]["role"] == "assistant":
                 return None
-            latest_message = conversation[-1]["payload"]
+            latest_message = conversation[-1]["content"]
             if latest_message == "Assign to Agent" or last_payload == "/call_support_agent":
                 assignee = get_least_busy_agent()
                 assign.s(ticket_id=ticket_id, assignee=assignee).apply_async()
