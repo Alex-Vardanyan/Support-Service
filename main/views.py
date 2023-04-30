@@ -7,9 +7,15 @@ from api.webhook import Webhook
 def index():
     return "<h1>Hi</h1>"
 
+
 @main.route("/test", methods=["GET"])
 def test():
     return """<!-- Start of alexvtest Zendesk Widget script --><script id="ze-snippet" src="https://static.zdassets.com/ekr/snippet.js?key=72313fa3-a590-47dc-a581-6cc2863af775"> </script><!-- End of alexvtest Zendesk Widget script -->"""
+
+
+@main.route("/track-ticket/<:ticket_id>", methods=["GET", "POST"])  # all the required info will be in the ticket
+def track_ticket():  # todo change it according to the zendesk's flow-builder
+    return Webhook(request).track_ticket()
 
 
 @main.route("/zendesk-webhook", methods=["POST"])

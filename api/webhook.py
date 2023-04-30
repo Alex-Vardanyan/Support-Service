@@ -16,6 +16,7 @@ key_id = config.get("ZENDESK_KEY_ID")
 secret_key = config.get("ZENDESK_SECRET_KEY")
 
 
+# todo refactor code, create Helper function
 @shared_task()
 def assign(ticket_id, assignee=None):
     uri = f"/api/v2/tickets/{ticket_id}"
@@ -330,7 +331,8 @@ class Webhook(Controller):
                 print("done2")
             if contents["type"] == "ticket_updated":
                 if contents['assignee_id'] != config.get("ASSIGNEE_ID") or contents["ticket_status"] in ["solved",
-                                                                                                         "closed"]:
+                                                                                                         "closed",
+                                                                                                         "pending"]:
                     pass  # todo IDK yet maybe delete some logs in mongo
                 # todo just forget about this ticket
                 else:
@@ -366,3 +368,6 @@ class Webhook(Controller):
 
         mark_as.s(ticket_id=ticket_id, status="solved").apply_async()  # todo closed?
         return "Thank you, your ticket is now marked as Solved", 200
+
+    def track_ticket(self):  # todo to be added, flow-builder
+        pass  # todo maybe only reply to chats from here, maybe add to mongo to track, ticket merging possibility
