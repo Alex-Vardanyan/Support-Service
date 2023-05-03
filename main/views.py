@@ -13,7 +13,7 @@ def test():
     return """<!-- Start of alexvtest Zendesk Widget script --><script id="ze-snippet" src="https://static.zdassets.com/ekr/snippet.js?key=72313fa3-a590-47dc-a581-6cc2863af775"> </script><!-- End of alexvtest Zendesk Widget script -->"""
 
 
-@main.route("/track-ticket/<:ticket_id>", methods=["GET", "POST"])  # all the required info will be in the ticket
+@main.route("/track-ticket/<int:ticket_id>", methods=["GET", "POST"])  # all the required info will be in the ticket
 def track_ticket():  # todo change it according to the zendesk's flow-builder
     return Webhook(request).track_ticket()
 
@@ -29,6 +29,6 @@ def agent_assign(token):
     return Webhook(request).agent_assign()
 
 
-@main.route("/app/mark-solved/<token>", methods=["GET"])
+@main.route("/app//mark-solved/<token>", methods=["GET"])
 def mark_solved(token):
     return Webhook(request).mark_solved()
